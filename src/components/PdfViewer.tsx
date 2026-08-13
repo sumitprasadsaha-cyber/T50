@@ -1,0 +1,156 @@
+import React, { useEffect, useState, useCallback } from "react";
+import { FileText, Image as ImageIcon, AlertTriangle, RefreshCw, X, CheckCircle2 } from "lucide-react";
+import { openPdfWithNativeViewer, isImageFile } from "../lib/nativePdfService";
+
+interface PdfViewerProps {
+  url: string;
+  title: string;
+  onClose: () => void;
+  noteId?: string;
+  storagePath?: string;
+  bucket?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileType?: "pdf" | "image" | string;
+}
+
+export default function PdfViewer({
+  url,
+  title,
+  onClose,
+  noteId,
+  storagePath,
+  bucket,
+  fileName,
+  mimeType,
+  fileType
+}: PdfViewerProps) {
+  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState(10);
+  const [statusText, setStatusText] = useState("Opening notes...");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [retryTrigger, setRetryTrigger] = useState(0);
+
+  const isImg = isImageFile(fileName, url, mimeType, fileType);
+
+  const handleOpenPdf = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setSuccess(false);
+      setProgress(10);
+      setStatusText("Opening notes...");
+
+      await openPdfWithNativeViewer({
+        url,
+        title,
+        storagePath,
+        bucket,
+        noteId,
+        fileName,
+        mimeType,
+        fileType,
+        onProgress: (percent, status) => {
+          setProgress(percent);
+          setStatusText(status);
+        }
+      });
+
+      setSuccess(true);
+      setLoading(false);
+
+      // Auto dismiss modal overlay after 1.2s when native reader launches
+      setTimeout(() => {
+        onClose();
+      }, 1200);
+    } catch (err: any) {
+      console.error("[PdfViewer Modal] Error opening document:", err);
+      setError("Unable to download notes. Please try again.");
+      setLoading(false);
+    }
+  }, [url, title, storagePath, bucket, noteId, fileName, mimeType, fileType, isImg, onClose]);
+
+  useEffect(() => {
+    handleOpenPdf();
+  }, [handleOpenPdf, retryTrigger]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn select-none">
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-6 text-white flex flex-col items-center text-center">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
+          title="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Icon Badge */}
+        <div className="p-3.5 bg-blue-600/10 border border-blue-500/20 text-blue-400 rounded-2xl mb-4">
+          {isImg ? <ImageIcon className="w-8 h-8" /> : <FileText className="w-8 h-8" />}
+        </div>
+
+        {/* Document Title */}
+        <h3 className="text-base font-bold text-slate-100 truncate max-w-full px-2 mb-1">
+          {title}
+        </h3>
+        <p className="text-xs text-slate-400 mb-5">
+          {isImg ? "Opening Photo" : "Opening Notes"}
+        </p>
+
+        {/* Loading / Progress State */}
+        {loading && (
+          <div className="w-full flex flex-col items-center gap-3">
+            <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700/80">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <span className="text-xs font-semibold text-slate-300 animate-pulse">
+              {statusText}
+            </span>
+          </div>
+        )}
+
+        {/* Success State */}
+        {success && !loading && (
+          <div className="flex flex-col items-center gap-2 text-emerald-400 animate-fadeIn">
+            <CheckCircle2 className="w-7 h-7" />
+            <span className="text-xs font-bold text-slate-200">
+              {isImg ? "Photo Opened" : "Notes Opened"}
+            </span>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && !loading && (
+          <div className="w-full flex flex-col items-center gap-3 bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl text-rose-400 mt-1">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <span className="text-xs font-bold text-left">{error}</span>
+            </div>
+
+            <div className="flex items-center gap-2 mt-2 w-full">
+              <button
+                onClick={() => setRetryTrigger((prev) => prev + 1)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md cursor-pointer transition active:scale-95"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl cursor-pointer transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
